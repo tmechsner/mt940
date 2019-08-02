@@ -225,7 +225,10 @@ def _parse_mt940_details(detail_str):
                         break
                 if skip_this_item:
                     continue
-            result[key] = (result[key] or '') + value
+            try:
+                result[key] = (result[key] or '') + value
+            except KeyError:
+                result[key] = value
         elif key in ('61', '62', '63'):
             key60 = DETAIL_KEYS['60']
             result[key60] = (result[key60] or '') + value
