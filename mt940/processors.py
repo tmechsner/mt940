@@ -125,27 +125,53 @@ GVC_KEYS = {
 }
 
 # Special items occurring within the purpose for comdirect
+# If a line/item starts with <indicator>:
+#   If <value> is not None, set <key> to <value> in the result. Remaining characters of the line will be omitted.
+#   Otherwise, if there are characters left in the line/item, set <key> to that rest string.
+#   Otherwise, use the value of the next line/item to set <key> in the result.
 COMDIRECT_SPECIAL_ITEMS = [
         {'indicator': 'END-TO-END-REF.:',
          'key': 'end_to_end_ref',
-         'boolean': False,
-         'val_in_next_item': True},
+         'value': None},
         {'indicator': 'CORE / MANDATSREF.:',
          'key': 'mandate_reference',
-         'boolean': False,
-         'val_in_next_item': True},
+         'value': None},
         {'indicator': 'GLÄUBIGER-ID:',
          'key': 'creditor_id',
-         'boolean': False,
-         'val_in_next_item': True},
+         'value': None},
         {'indicator': 'KARTENZAHLUNG',
          'key': 'card_payment',
-         'boolean': True,
-         'val_in_next_item': False},
+         'value': True},
         {'indicator': 'Ref. ',
          'key': 'reference',
-         'boolean': False,
-         'val_in_next_item': False},
+         'value': None},
+        {'indicator': 'WERTPAPIERE',
+         'key': 'type',
+         'value': 'securities'},
+        {'indicator': 'LASTSCHRIFT / BELASTUNG',
+         'key': 'type',
+         'value': 'charge'},
+        {'indicator': 'ÜBERTRAG / ÜBERWEISUNG',
+         'key': 'type',
+         'value': 'transfer'},
+        {'indicator': 'KONTOÜBERTRAG',
+         'key': 'type',
+         'value': 'account_transfer'},
+        {'indicator': 'AUSZAHLUNG',
+         'key': 'type',
+         'value': 'payout'},
+        {'indicator': 'BAR',
+         'key': 'type',
+         'value': 'cash'},
+        {'indicator': 'ENTGELTE',
+         'key': 'type',
+         'value': 'fee'},
+        {'indicator': 'KARTENVERFÜGUNG',
+         'key': 'type',
+         'value': 'card_transaction'},
+        {'indicator': 'KUPON',
+         'key': 'type',
+         'value': 'coupon'},
 ]
 
 
@@ -180,23 +206,26 @@ def _parse_mt940_details(detail_str):
             result[key32] = (result[key32] or '') + value
         elif key.startswith('2'):
             if next_item_key:
-                result[next_item_key] = value
+                key = next_item_key
             else:
+                key = DETAIL_KEYS['20']
                 skip_this_item = False
                 for spec_item in COMDIRECT_SPECIAL_ITEMS:
                     if value.startswith(spec_item['indicator']):
-                        skip_this_item = True
-                        if spec_item['val_in_next_item']:
-                            next_item_key = spec_item['key']
-                        elif spec_item['boolean']:
-                            result[spec_item['key']] = True
+                        if spec_item['value']:
+                            key = spec_item['key']
+                            value = spec_item['value']
                         else:
-                            result[spec_item['key']] = value.split(spec_item['indicator'])[1]
+                            if len(value) == len(spec_item['indicator']):
+                                next_item_key = spec_item['key']
+                                skip_this_item = True
+                            else:
+                                key = spec_item['key']
+                                value = value.split(spec_item['indicator'])[1]
                         break
                 if skip_this_item:
                     continue
-                key20 = DETAIL_KEYS['20']
-                result[key20] = (result[key20] or '') + value
+            result[key] = (result[key] or '') + value
         elif key in ('61', '62', '63'):
             key60 = DETAIL_KEYS['60']
             result[key60] = (result[key60] or '') + value
