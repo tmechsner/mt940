@@ -126,7 +126,7 @@ GVC_KEYS = {
 
 # Special items occurring within the purpose for comdirect
 # If a line/item starts with <indicator>:
-#   If <value> is not None, set <key> to <value> in the result. Remaining characters of the line will be omitted.
+#   If <value> is not None, set <key> to <value> in the result. Remaining characters of the line will be appended to the purpose field.
 #   Otherwise, if there are characters left in the line/item, set <key> to that rest string.
 #   Otherwise, use the value of the next line/item to set <key> in the result.
 COMDIRECT_SPECIAL_ITEMS = [
@@ -145,38 +145,26 @@ COMDIRECT_SPECIAL_ITEMS = [
         {'indicator': 'Ref. ',
          'key': 'reference',
          'value': None},
-        {'indicator': 'WERTPAPIERE',
-         'key': 'type',
-         'value': 'securities'},
-        {'indicator': 'LASTSCHRIFT / BELASTUNG',
-         'key': 'type',
-         'value': 'charge'},
-        {'indicator': 'ÜBERTRAG / ÜBERWEISUNG',
-         'key': 'type',
-         'value': 'transfer'},
-        {'indicator': 'KONTOÜBERTRAG',
-         'key': 'type',
-         'value': 'account_transfer'},
-        {'indicator': 'AUSZAHLUNG',
-         'key': 'type',
-         'value': 'payout'},
-        {'indicator': 'BAR',
-         'key': 'type',
-         'value': 'cash'},
-        {'indicator': 'ENTGELTE',
-         'key': 'type',
-         'value': 'fee'},
-        {'indicator': 'KARTENVERFÜGUNG',
-         'key': 'type',
-         'value': 'card_transaction'},
-        {'indicator': 'KUPON',
-         'key': 'type',
-         'value': 'coupon'},
 ]
+
+COMDIRECT_TRANSACTION_TYPES = {
+    'WERTPAPIERE': 'securities',
+    'LASTSCHRIFT / BELASTUNG': 'charge',
+    'ÜBERTRAG / ÜBERWEISUNG': 'transfer',
+    'KONTOÜBERTRAG': 'account_transfer',
+    'AUSZAHLUNG': 'payout',
+    'BAR': 'cash',
+    'ENTGELTE': 'fee',
+    'KARTENVERFÜGUNG': 'card_transaction',
+    'KUPON': 'coupon',
+}
 
 
 def _parse_mt940_details(detail_str):
     result = dict.fromkeys(DETAIL_KEYS.values())
+    result['type'] = ''
+    for v in COMDIRECT_SPECIAL_ITEMS:
+        result[v['key']] = ''
 
     tmp = collections.OrderedDict()
     segment = ''
@@ -200,7 +188,10 @@ def _parse_mt940_details(detail_str):
     next_item_key = None
     for key, value in tmp.items():
         if key in DETAIL_KEYS:
-            result[DETAIL_KEYS[key]] = value
+            if key == '20' and value in COMDIRECT_TRANSACTION_TYPES.keys():
+                result['type'] = COMDIRECT_TRANSACTION_TYPES[value]
+            else:
+                result[DETAIL_KEYS[key]] = value
         elif key == '33':
             key32 = DETAIL_KEYS['32']
             result[key32] = (result[key32] or '') + value
@@ -213,8 +204,8 @@ def _parse_mt940_details(detail_str):
                 for spec_item in COMDIRECT_SPECIAL_ITEMS:
                     if value.startswith(spec_item['indicator']):
                         if spec_item['value']:
-                            key = spec_item['key']
-                            value = spec_item['value']
+                            result[spec_item['key']] = spec_item['value']
+                            value = value.split(spec_item['indicator'])[1]
                         else:
                             if len(value) == len(spec_item['indicator']):
                                 next_item_key = spec_item['key']
@@ -225,10 +216,7 @@ def _parse_mt940_details(detail_str):
                         break
                 if skip_this_item:
                     continue
-            try:
-                result[key] = (result[key] or '') + value
-            except KeyError:
-                result[key] = value
+            result[key] = (result[key] or '') + value
         elif key in ('61', '62', '63'):
             key60 = DETAIL_KEYS['60']
             result[key60] = (result[key60] or '') + value
