@@ -124,6 +124,30 @@ GVC_KEYS = {
     'OAMT': 'original_amount',
 }
 
+# Special items occurring within the purpose for comdirect
+COMDIRECT_SPECIAL_ITEMS = [
+        {'indicator': 'END-TO-END-REF.:',
+         'key': 'end_to_end_ref',
+         'boolean': False,
+         'val_in_next_item': True},
+        {'indicator': 'CORE / MANDATSREF.:',
+         'key': 'mandate_reference',
+         'boolean': False,
+         'val_in_next_item': True},
+        {'indicator': 'GLÄUBIGER-ID:',
+         'key': 'creditor_id',
+         'boolean': False,
+         'val_in_next_item': True},
+        {'indicator': 'KARTENZAHLUNG',
+         'key': 'card_payment',
+         'boolean': True,
+         'val_in_next_item': False},
+        {'indicator': 'Ref. ',
+         'key': 'reference',
+         'boolean': False,
+         'val_in_next_item': False},
+]
+
 
 def _parse_mt940_details(detail_str):
     result = dict.fromkeys(DETAIL_KEYS.values())
@@ -147,6 +171,7 @@ def _parse_mt940_details(detail_str):
     if segment_type:  # pragma: no branch
         tmp[segment_type] = segment if not segment_type else segment[2:]
 
+    next_item_key = None
     for key, value in tmp.items():
         if key in DETAIL_KEYS:
             result[DETAIL_KEYS[key]] = value
@@ -154,11 +179,28 @@ def _parse_mt940_details(detail_str):
             key32 = DETAIL_KEYS['32']
             result[key32] = (result[key32] or '') + value
         elif key.startswith('2'):
-            key20 = DETAIL_KEYS['20']
-            result[key20] = (result[key20] or '') + value
+            if next_item_key:
+                result[next_item_key] = value
+            else:
+                skip_this_item = False
+                for spec_item in COMDIRECT_SPECIAL_ITEMS:
+                    if value.startswith(spec_item['indicator']):
+                        skip_this_item = True
+                        if spec_item['val_in_next_item']:
+                            next_item_key = spec_item['key']
+                        elif spec_item['boolean']:
+                            result[spec_item['key']] = True
+                        else:
+                            result[spec_item['key']] = value.split(spec_item['indicator'])[1]
+                        break
+                if skip_this_item:
+                    continue
+                key20 = DETAIL_KEYS['20']
+                result[key20] = (result[key20] or '') + value
         elif key in ('61', '62', '63'):
             key60 = DETAIL_KEYS['60']
             result[key60] = (result[key60] or '') + value
+        next_item_key = None
 
     return result
 
